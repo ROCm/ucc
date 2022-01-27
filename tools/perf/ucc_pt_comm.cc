@@ -28,6 +28,20 @@ void ucc_pt_comm::set_gpu_device()
                     exit_cuda, st);
 exit_cuda:
 #endif
+#ifdef HAVE_ROCM
+    {
+        hipError_t st;
+        int dev_count;
+        HIP_CHECK_GOTO(hipGetDeviceCount(&dev_count), exit_rocm, st);
+        if (dev_count == 0) {
+            return;
+        }
+        HIP_CHECK_GOTO(hipSetDevice(bootstrap->get_local_rank() % dev_count),
+                       exit_rocm, st);
+    }
+exit_rocm:
+#endif
+
     return;
 }
 

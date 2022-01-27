@@ -37,3 +37,9 @@ ucc_perftest_CPPFLAGS+=$(CUDA_CPPFLAGS)
 ucc_perftest_LDFLAGS=$(CUDA_LDFLAGS)
 ucc_perftest_LDADD+=$(CUDA_LIBS)
 endif
+
+if HAVE_ROCM
+ucc_perftest_CPPFLAGS+=$(HIP_CPPFLAGS)
+ucc_perftest_LDFLAGS=$(HIP_LDFLAGS)
+ucc_perftest_LDADD+=$(HIP_LIBS)
+endif

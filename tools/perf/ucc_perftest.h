@@ -45,3 +45,17 @@ extern "C" {
     } while (0)
 
 #endif
+
+#ifdef HAVE_ROCM
+#include <hip/hip_runtime_api.h>
+#define HIP_CHECK_GOTO(_call, _label, _status)                                 \
+    do {                                                                       \
+        _status = (_call);                                                     \
+        if (hipSuccess != _status) {                                           \
+            std::cerr << "UCC perftest error: " << hipGetErrorString(_status)  \
+                      << " in " << STR(_call) << "\n";                         \
+            goto _label;                                                       \
+        }                                                                      \
+    } while (0)
+
+#endif
