@@ -13,6 +13,12 @@ mc_dirs += components/mc/cuda
 ec_dirs += components/ec/cuda
 endif
 
+
+
+if HAVE_ROCM
+mc_dirs += components/mc/rocm
+endif
+
 SUBDIRS = . $(cl_dirs) $(mc_dirs) $(ec_dirs)
 
 include components/tl/makefile.am
