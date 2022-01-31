@@ -278,7 +278,12 @@ static ucc_status_t ucc_trigger_test(ucc_coll_task_t *task)
             /* implicit event triggered */
             task->ev = (ucc_ev_t *) 0xFFFF; /* dummy event */
             task->ee_task = NULL;
-        } else if (UCC_OK == ucc_ee_get_event_internal(task->ee, &ev,
+        } else if (task->ee->ee_type == UCC_EE_ROCM_STREAM) {
+	    /* implicit event triggered */
+            task->ev = (ucc_ev_t *) 0xFFFF; /* dummy event */
+            task->ee_task = NULL;
+        }
+	else if (UCC_OK == ucc_ee_get_event_internal(task->ee, &ev,
                                                  &task->ee->event_in_queue)) {
             ucc_trace("triggered event arrived, ev_task %p", task);
             task->ev      = ev;

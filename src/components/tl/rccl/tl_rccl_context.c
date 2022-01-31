@@ -7,8 +7,8 @@
  */
 
 #include "tl_rccl.h"
-#include "core/ucc_mc.h"
-#include "core/ucc_ee.h"
+#include "components/mc/ucc_mc.h"
+#include "components/ec/ucc_ec.h"
 #include "utils/arch/cpu.h"
 
 ucc_status_t ucc_tl_rccl_event_collective_progress(ucc_coll_task_t *coll_task)
@@ -17,7 +17,7 @@ ucc_status_t ucc_tl_rccl_event_collective_progress(ucc_coll_task_t *coll_task)
     ucc_status_t status;
 
     ucc_assert(task->completed != NULL);
-    status = ucc_mc_ee_event_test(task->completed, UCC_EE_CUDA_STREAM);
+    status = ucc_ec_event_test(task->completed, UCC_EE_CUDA_STREAM);
     coll_task->super.status = status;
 #ifdef HAVE_PROFILING_TL_RCCL
     if (coll_task->super.status == UCC_OK) {
@@ -63,7 +63,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_rccl_context_t,
         ucc_derived_of(config, ucc_tl_rccl_context_config_t);
     ucc_status_t status;
 
-    UCC_CLASS_CALL_SUPER_INIT(ucc_tl_context_t, tl_rccl_config->super.tl_lib,
+    UCC_CLASS_CALL_SUPER_INIT(ucc_tl_context_t, &tl_rccl_config->super,
                               params->context);
     memcpy(&self->cfg, tl_rccl_config, sizeof(*tl_rccl_config));
 

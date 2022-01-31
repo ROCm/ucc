@@ -8,8 +8,8 @@
 
 #include "tl_rccl.h"
 #include "tl_rccl_coll.h"
-#include "core/ucc_mc.h"
-#include "core/ucc_ee.h"
+#include "components/mc/ucc_mc.h"
+#include "components/ec/ucc_ec.h"
 #include "coll_score/ucc_coll_score.h"
 
 UCC_CLASS_INIT_FUNC(ucc_tl_rccl_team_t, ucc_base_context_t *tl_context,
@@ -184,7 +184,7 @@ ucc_status_t ucc_tl_rccl_team_get_scores(ucc_base_team_t   *tl_team,
                                          ucc_coll_score_t **score_p)
 {
     ucc_tl_rccl_team_t *team = ucc_derived_of(tl_team, ucc_tl_rccl_team_t);
-    ucc_tl_rccl_lib_t * lib  = UCC_TL_RCCL_TEAM_LIB(team);
+    ucc_base_context_t *ctx  = UCC_TL_TEAM_CTX(team);
     ucc_memory_type_t   mt   = UCC_MEMORY_TYPE_ROCM;
     ucc_coll_score_t   *score;
     ucc_status_t        status;
@@ -222,9 +222,9 @@ ucc_status_t ucc_tl_rccl_team_get_scores(ucc_base_team_t   *tl_team,
         return status;
     }
 
-    if (strlen(lib->super.super.score_str) > 0) {
+    if (strlen(ctx->score_str) > 0) {
         status = ucc_coll_score_update_from_str(
-            lib->super.super.score_str, score, UCC_TL_TEAM_SIZE(team),
+            ctx->score_str, score, UCC_TL_TEAM_SIZE(team),
             ucc_tl_rccl_coll_init, &team->super.super,
             UCC_TL_RCCL_DEFAULT_SCORE, ucc_tl_rccl_alg_id_to_init);
         /* If INVALID_PARAM - User provided incorrect input - try to proceed */
