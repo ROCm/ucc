@@ -31,7 +31,11 @@ ncclDataType_t ucc_to_rccl_dtype[] = {
     [UCC_DT_PREDEFINED_ID(UCC_DT_FLOAT16)]  = (ncclDataType_t)ncclFloat16,
     [UCC_DT_PREDEFINED_ID(UCC_DT_FLOAT32)]  = (ncclDataType_t)ncclFloat32,
     [UCC_DT_PREDEFINED_ID(UCC_DT_FLOAT64)]  = (ncclDataType_t)ncclFloat64,
-    [UCC_DT_PREDEFINED_ID(UCC_DT_BFLOAT16)] = (ncclDataType_t)ncclBfloat16
+#if NCCL_VERSION_CODE >= NCCL_VERSION(2,10,3)
+    [UCC_DT_PREDEFINED_ID(UCC_DT_BFLOAT16)] = (ncclDataType_t)ncclBfloat16,
+#else
+    [UCC_DT_PREDEFINED_ID(UCC_DT_BFLOAT16)] = (ncclDataType_t)ncclDataTypeUnsupported,
+#endif
 };
 
 ncclRedOp_t ucc_to_rccl_reduce_op[] = {
@@ -39,7 +43,11 @@ ncclRedOp_t ucc_to_rccl_reduce_op[] = {
     [UCC_OP_PROD]        = (ncclRedOp_t)ncclProd,
     [UCC_OP_MAX]         = (ncclRedOp_t)ncclMax,
     [UCC_OP_MIN]         = (ncclRedOp_t)ncclMin,
+#if NCCL_VERSION_CODE < NCCL_VERSION(2,10,3)
+    [UCC_OP_AVG]         = (ncclRedOp_t)ncclOpUnsupported,
+#else
     [UCC_OP_AVG]         = (ncclRedOp_t)ncclAvg,
+#endif
     [UCC_OP_LAND]        = (ncclRedOp_t)ncclOpUnsupported,
     [UCC_OP_LOR]         = (ncclRedOp_t)ncclOpUnsupported,
     [UCC_OP_LXOR]        = (ncclRedOp_t)ncclOpUnsupported,
