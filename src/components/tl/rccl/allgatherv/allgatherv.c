@@ -7,7 +7,7 @@
 
 #include "tl_rccl.h"
 #include "allgatherv.h"
-#include "core/ucc_mc.h"
+#include "components/mc/ucc_mc.h"
 #include "core/ucc_ee.h"
 
 ucc_base_coll_alg_info_t

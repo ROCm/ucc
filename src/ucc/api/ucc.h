@@ -2004,6 +2004,7 @@ typedef enum ucc_event_type {
  */
 typedef enum ucc_ee_type {
     UCC_EE_CUDA_STREAM = 0,
+    UCC_EE_ROCM_STREAM = 0,
     UCC_EE_CPU_THREAD,
     UCC_EE_LAST,
     UCC_EE_UNKNOWN = UCC_EE_LAST

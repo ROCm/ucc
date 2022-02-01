@@ -12,19 +12,6 @@
 #include <hsa/hsa.h>
 #include <hsa/hsa_ext_amd.h>
 
-static const char *stream_task_modes[] = {
-    [UCC_MC_ROCM_TASK_KERNEL]  = "kernel",
-    [UCC_MC_ROCM_TASK_MEM_OPS] = "driver",
-    [UCC_MC_ROCM_TASK_AUTO]    = "auto",
-    [UCC_MC_ROCM_TASK_LAST]    = NULL
-};
-
-static const char *task_stream_types[] = {
-    [UCC_MC_ROCM_USER_STREAM]      = "user",
-    [UCC_MC_ROCM_INTERNAL_STREAM]  = "ucc",
-    [UCC_MC_ROCM_TASK_STREAM_LAST] = NULL
-};
-
 static ucc_config_field_t ucc_mc_rocm_config_table[] = {
     {"", "", NULL, ucc_offsetof(ucc_mc_rocm_config_t, super),
      UCC_CONFIG_TYPE_TABLE(ucc_mc_config_table)},
@@ -33,27 +20,7 @@ static ucc_config_field_t ucc_mc_rocm_config_table[] = {
      "Number of thread blocks to use for reduction",
      ucc_offsetof(ucc_mc_rocm_config_t, reduce_num_blocks),
      UCC_CONFIG_TYPE_ULUNITS},
-
-    {"STREAM_TASK_MODE", "auto",
-     "Mechanism to create stream dependency\n"
-     "kernel - use waiting kernel\n"
-     "driver - use driver MEM_OPS\n"
-     "auto   - runtime automatically chooses best one",
-     ucc_offsetof(ucc_mc_rocm_config_t, strm_task_mode),
-     UCC_CONFIG_TYPE_ENUM(stream_task_modes)},
-
-    {"TASK_STREAM", "user",
-     "Stream for rocm task\n"
-     "user - user stream provided in execution engine context\n"
-     "ucc  - ucc library internal stream",
-     ucc_offsetof(ucc_mc_rocm_config_t, task_strm_type),
-     UCC_CONFIG_TYPE_ENUM(task_stream_types)},
-
-    {"STREAM_BLOCKING_WAIT", "1",
-     "Stream is blocked until collective operation is done",
-     ucc_offsetof(ucc_mc_rocm_config_t, stream_blocking_wait),
-     UCC_CONFIG_TYPE_UINT},
-
+    
     {"MPOOL_ELEM_SIZE", "1Mb", "The size of each element in mc rocm mpool",
      ucc_offsetof(ucc_mc_rocm_config_t, mpool_elem_size),
      UCC_CONFIG_TYPE_MEMUNITS},
@@ -64,76 +31,11 @@ static ucc_config_field_t ucc_mc_rocm_config_table[] = {
     {NULL}
 };
 
-static ucc_status_t ucc_mc_rocm_stream_req_mpool_chunk_malloc(ucc_mpool_t *mp,
-                                                              size_t *size_p,
-                                                              void ** chunk_p)
-{
-    ucc_status_t status;
-
-    status = ROCM_FUNC(hipHostMalloc((void**)chunk_p, *size_p,
-                       hipHostMallocMapped));
-    return status;
-}
-
-static void ucc_mc_rocm_stream_req_mpool_chunk_free(ucc_mpool_t *mp,
-                                                    void *       chunk)
-{
-    hipHostFree(chunk);
-}
-
-static void ucc_mc_rocm_stream_req_init(ucc_mpool_t *mp, void *obj, void *chunk)
-{
-    ucc_mc_rocm_stream_request_t *req = (ucc_mc_rocm_stream_request_t*) obj;
-
-    ROCM_FUNC(hipHostGetDevicePointer(
-                  (void**)(&req->dev_status), (void *)&req->status, 0));
-}
-
-static ucc_mpool_ops_t ucc_mc_rocm_stream_req_mpool_ops = {
-    .chunk_alloc   = ucc_mc_rocm_stream_req_mpool_chunk_malloc,
-    .chunk_release = ucc_mc_rocm_stream_req_mpool_chunk_free,
-    .obj_init      = ucc_mc_rocm_stream_req_init,
-    .obj_cleanup   = NULL
-};
-
-static void ucc_mc_rocm_event_init(ucc_mpool_t *mp, void *obj, void *chunk)
-{
-    ucc_mc_rocm_event_t *base = (ucc_mc_rocm_event_t *) obj;
-
-    if (ucc_unlikely(
-          hipSuccess !=
-          hipEventCreateWithFlags(&base->event, hipEventDisableTiming))) {
-      mc_error(&ucc_mc_rocm.super, "hipEventCreateWithFlags Failed");
-    }
-}
-
-static void ucc_mc_rocm_event_cleanup(ucc_mpool_t *mp, void *obj)
-{
-    ucc_mc_rocm_event_t *base = (ucc_mc_rocm_event_t *) obj;
-    if (ucc_unlikely(hipSuccess != hipEventDestroy(base->event))) {
-        mc_error(&ucc_mc_rocm.super, "hipEventDestroy Failed");
-    }
-}
-
-static ucc_mpool_ops_t ucc_mc_rocm_event_mpool_ops = {
-    .chunk_alloc   = ucc_mpool_hugetlb_malloc,
-    .chunk_release = ucc_mpool_hugetlb_free,
-    .obj_init      = ucc_mc_rocm_event_init,
-    .obj_cleanup   = ucc_mc_rocm_event_cleanup,
-};
-
-static ucc_status_t ucc_mc_rocm_post_kernel_stream_task(uint32_t *status,
-                                                 int blocking_wait,
-                                                 hipStream_t stream)
-{
-    return UCC_OK;
-}
 
 static ucc_status_t ucc_mc_rocm_init(const ucc_mc_params_t *mc_params)
 {
     ucc_mc_rocm_config_t *cfg = MC_ROCM_CONFIG;
     struct hipDeviceProp_t prop;
-    ucc_status_t status;
     int device, num_devices;
     hipError_t rocm_st;
 
@@ -157,42 +59,7 @@ static ucc_status_t ucc_mc_rocm_init(const ucc_mc_params_t *mc_params)
             cfg->reduce_num_blocks = prop.maxGridSize[0];
         }
     }
-
-    /*create event pool */
-    status = ucc_mpool_init(&ucc_mc_rocm.events, 0, sizeof(ucc_mc_rocm_event_t),
-                            0, UCC_CACHE_LINE_SIZE, 16, UINT_MAX,
-                            &ucc_mc_rocm_event_mpool_ops, UCC_THREAD_MULTIPLE,
-                            "ROCM Event Objects");
-    if (status != UCC_OK) {
-        mc_error(&ucc_mc_rocm.super, "Error to create event pool");
-        return status;
-    }
-
-    /* create request pool */
-    status = ucc_mpool_init(
-        &ucc_mc_rocm.strm_reqs, 0, sizeof(ucc_mc_rocm_stream_request_t), 0,
-        UCC_CACHE_LINE_SIZE, 16, UINT_MAX, &ucc_mc_rocm_stream_req_mpool_ops,
-        UCC_THREAD_MULTIPLE, "ROCM Event Objects");
-    if (status != UCC_OK) {
-        mc_error(&ucc_mc_rocm.super, "Error to create event pool");
-        return status;
-    }
-
-    if (cfg->strm_task_mode == UCC_MC_ROCM_TASK_KERNEL) {
-        ucc_mc_rocm.strm_task_mode = UCC_MC_ROCM_TASK_KERNEL;
-        ucc_mc_rocm.post_strm_task = ucc_mc_rocm_post_kernel_stream_task;
-    } else {
-        if (cfg->strm_task_mode == UCC_MC_ROCM_TASK_AUTO) {
-            ucc_mc_rocm.strm_task_mode = UCC_MC_ROCM_TASK_KERNEL;
-            ucc_mc_rocm.post_strm_task = ucc_mc_rocm_post_kernel_stream_task;
-        } else {
-            mc_error(&ucc_mc_rocm.super, "ROCM MEM OPS are not supported");
-            return UCC_ERR_NOT_SUPPORTED;
-        }
-    }
-
-    ucc_mc_rocm.task_strm_type = cfg->task_strm_type;
-
+    
     // lock assures single mpool initiation when multiple threads concurrently execute
     // different collective operations thus concurrently entering init function.
     ucc_spinlock_init(&ucc_mc_rocm.init_spinlock, 0);
@@ -447,128 +314,6 @@ static ucc_status_t ucc_mc_rocm_mem_query(const void *ptr,
     return UCC_OK;
 }
 
-ucc_status_t ucc_ee_rocm_task_post(void *ee_stream, void **ee_req)
-{
-    ucc_mc_rocm_stream_request_t *req;
-    ucc_mc_rocm_event_t *rocm_event;
-    ucc_status_t status;
-    ucc_mc_rocm_config_t *cfg = MC_ROCM_CONFIG;
-
-    UCC_MC_ROCM_INIT_STREAM();
-    req = ucc_mpool_get(&ucc_mc_rocm.strm_reqs);
-    ucc_assert(req);
-    req->status = UCC_MC_ROCM_TASK_POSTED;
-    req->stream = (hipStream_t)ee_stream;
-
-    if (ucc_mc_rocm.task_strm_type == UCC_MC_ROCM_USER_STREAM) {
-        status = ucc_mc_rocm.post_strm_task(req->dev_status,
-                                            cfg->stream_blocking_wait,
-                                            req->stream);
-        if (status != UCC_OK) {
-            goto free_req;
-        }
-    } else {
-        rocm_event = ucc_mpool_get(&ucc_mc_rocm.events);
-        ucc_assert(rocm_event);
-        ROCMCHECK(hipEventRecord(rocm_event->event, req->stream));
-        ROCMCHECK(hipStreamWaitEvent(ucc_mc_rocm.stream, rocm_event->event, 0));
-        status = ucc_mc_rocm.post_strm_task(req->dev_status,
-                                            cfg->stream_blocking_wait,
-                                            ucc_mc_rocm.stream);
-        if (ucc_unlikely(status != UCC_OK)) {
-            goto free_event;
-        }
-        ROCMCHECK(hipEventRecord(rocm_event->event, ucc_mc_rocm.stream));
-        ROCMCHECK(hipStreamWaitEvent(req->stream, rocm_event->event, 0));
-        ucc_mpool_put(rocm_event);
-    }
-
-    *ee_req = (void *) req;
-
-    mc_info(&ucc_mc_rocm.super, "ROCM stream task posted on \"%s\" stream. req:%p",
-            task_stream_types[ucc_mc_rocm.task_strm_type], req);
-
-    return UCC_OK;
-
-free_event:
-    ucc_mpool_put(rocm_event);
-free_req:
-    ucc_mpool_put(req);
-    return status;
-}
-
-ucc_status_t ucc_ee_rocm_task_query(void *ee_req)
-{
-    ucc_mc_rocm_stream_request_t *req = ee_req;
-
-    /* ee task might be only in POSTED, STARTED or COMPLETED_ACK state
-       COMPLETED state is used by ucc_ee_rocm_task_end function to request
-       stream unblock*/
-    ucc_assert(req->status != UCC_MC_ROCM_TASK_COMPLETED);
-    if (req->status == UCC_MC_ROCM_TASK_POSTED) {
-        return UCC_INPROGRESS;
-    }
-    mc_info(&ucc_mc_rocm.super, "ROCM stream task started. req:%p", req);
-    return UCC_OK;
-}
-
-ucc_status_t ucc_ee_rocm_task_end(void *ee_req)
-{
-    ucc_mc_rocm_stream_request_t *req = ee_req;
-    volatile ucc_mc_task_status_t *st = &req->status;
-
-    /* can be safely ended only if it's in STARTED or COMPLETED_ACK state */
-    ucc_assert((*st != UCC_MC_ROCM_TASK_POSTED) &&
-               (*st != UCC_MC_ROCM_TASK_COMPLETED));
-    if (*st == UCC_MC_ROCM_TASK_STARTED) {
-        *st = UCC_MC_ROCM_TASK_COMPLETED;
-        while(*st != UCC_MC_ROCM_TASK_COMPLETED_ACK) { }
-    }
-    ucc_mpool_put(req);
-    mc_info(&ucc_mc_rocm.super, "ROCM stream task done. req:%p", req);
-    return UCC_OK;
-}
-
-ucc_status_t ucc_ee_rocm_create_event(void **event)
-{
-    ucc_mc_rocm_event_t *rocm_event;
-
-    rocm_event = ucc_mpool_get(&ucc_mc_rocm.events);
-    ucc_assert(rocm_event);
-    *event = rocm_event;
-    return UCC_OK;
-}
-
-ucc_status_t ucc_ee_rocm_destroy_event(void *event)
-{
-    ucc_mc_rocm_event_t *rocm_event = event;
-
-    ucc_mpool_put(rocm_event);
-    return UCC_OK;
-}
-
-ucc_status_t ucc_ee_rocm_event_post(void *ee_context, void *event)
-{
-    hipStream_t stream = (hipStream_t )ee_context;
-    ucc_mc_rocm_event_t *rocm_event = event;
-
-    ROCMCHECK(hipEventRecord(rocm_event->event, stream));
-    return UCC_OK;
-}
-
-ucc_status_t ucc_ee_rocm_event_test(void *event)
-{
-    hipError_t hip_err;
-    ucc_mc_rocm_event_t *rocm_event = event;
-
-    hip_err = hipEventQuery(rocm_event->event);
-    if (ucc_unlikely((hip_err != hipSuccess) &&
-                     (hip_err != hipErrorNotReady))) {
-        ROCMCHECK(hip_err);
-    }
-    return hip_error_to_ucc_status(hip_err);
-}
-
 static ucc_status_t ucc_mc_rocm_finalize()
 {
     if (ucc_mc_rocm.stream != NULL) {
@@ -603,13 +348,6 @@ ucc_mc_rocm_t ucc_mc_rocm = {
             .table  = ucc_mc_rocm_config_table,
             .size   = sizeof(ucc_mc_rocm_config_t),
         },
-    .super.ee_ops.ee_task_post     = ucc_ee_rocm_task_post,
-    .super.ee_ops.ee_task_query    = ucc_ee_rocm_task_query,
-    .super.ee_ops.ee_task_end      = ucc_ee_rocm_task_end,
-    .super.ee_ops.ee_create_event  = ucc_ee_rocm_create_event,
-    .super.ee_ops.ee_destroy_event = ucc_ee_rocm_destroy_event,
-    .super.ee_ops.ee_event_post    = ucc_ee_rocm_event_post,
-    .super.ee_ops.ee_event_test    = ucc_ee_rocm_event_test,
     .mpool_init_flag               = 0,
 };
 
