@@ -7,7 +7,7 @@
 
 #include "tl_rccl.h"
 #include "allgatherv.h"
-#include "core/ucc_mc.h"
+#include "components/mc/ucc_mc.h"
 #include "core/ucc_ee.h"
 
 ucc_base_coll_alg_info_t
@@ -203,13 +203,13 @@ ucc_status_t ucc_tl_rccl_allgatherv_bcopy_init(ucc_base_coll_args_t *coll_args,
         status = ucc_mc_alloc(&task->allgatherv_bcopy.scratch,
                               (team->params.size + 1) * max_count *
                               ucc_dt_size(args->dst.info_v.datatype),
-                              UCC_MEMORY_TYPE_CUDA);
+                              UCC_MEMORY_TYPE_ROCM);
 
     } else {
         status = ucc_mc_alloc(&task->allgatherv_bcopy.scratch, max_count *
                               team->params.size *
                               ucc_dt_size(args->dst.info_v.datatype),
-                              UCC_MEMORY_TYPE_CUDA);
+                              UCC_MEMORY_TYPE_ROCM);
     }
     if (ucc_unlikely(status != UCC_OK)) {
         ucc_tl_rccl_free_task(task);

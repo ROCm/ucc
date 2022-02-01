@@ -13,25 +13,6 @@
 #include "utils/ucc_mpool.h"
 #include <hip/hip_runtime_api.h>
 
-typedef enum ucc_mc_rocm_strm_task_mode {
-    UCC_MC_ROCM_TASK_KERNEL,
-    UCC_MC_ROCM_TASK_MEM_OPS,
-    UCC_MC_ROCM_TASK_AUTO,
-    UCC_MC_ROCM_TASK_LAST,
-} ucc_mc_rocm_strm_task_mode_t;
-
-typedef enum ucc_mc_rocm_task_stream_type {
-    UCC_MC_ROCM_USER_STREAM,
-    UCC_MC_ROCM_INTERNAL_STREAM,
-    UCC_MC_ROCM_TASK_STREAM_LAST
-} ucc_mc_rocm_task_stream_type_t;
-
-typedef enum ucc_mc_task_status {
-    UCC_MC_ROCM_TASK_COMPLETED,
-    UCC_MC_ROCM_TASK_POSTED,
-    UCC_MC_ROCM_TASK_STARTED,
-    UCC_MC_ROCM_TASK_COMPLETED_ACK
-} ucc_mc_task_status_t;
 
 static inline ucc_status_t hip_error_to_ucc_status(hipError_t hip_err)
 {
@@ -54,9 +35,6 @@ typedef struct ucc_mc_rocm_config {
     ucc_mc_config_t                super;
     unsigned long                  reduce_num_blocks;
     int                            reduce_num_threads;
-    ucc_mc_rocm_strm_task_mode_t   strm_task_mode;
-    ucc_mc_rocm_task_stream_type_t task_strm_type;
-    int                            stream_blocking_wait;
     size_t                         mpool_elem_size;
     int                            mpool_max_elems;
 } ucc_mc_rocm_config_t;
@@ -70,20 +48,8 @@ typedef struct ucc_mc_rocm {
     int                            mpool_init_flag;
     ucc_spinlock_t                 init_spinlock;
     ucc_thread_mode_t              thread_mode;
-    ucc_mc_rocm_strm_task_mode_t   strm_task_mode;
-    ucc_mc_rocm_task_stream_type_t task_strm_type;
-    ucc_mc_rocm_task_post_fn       post_strm_task;
 } ucc_mc_rocm_t;
 
-typedef struct ucc_rocm_mc_event {
-    hipEvent_t    event;
-} ucc_mc_rocm_event_t;
-
-typedef struct ucc_mc_rocm_stream_request {
-    uint32_t            status;
-    uint32_t           *dev_status;
-    hipStream_t         stream;
-} ucc_mc_rocm_stream_request_t;
 
 extern ucc_mc_rocm_t ucc_mc_rocm;
 #define ROCMCHECK(cmd) do {                                                    \

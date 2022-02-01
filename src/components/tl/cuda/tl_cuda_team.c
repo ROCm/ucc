@@ -10,6 +10,7 @@
 #include "core/ucc_team.h"
 #include "coll_score/ucc_coll_score.h"
 #include "utils/arch/cpu.h"
+#include "utils/arch/cuda_def.h"
 #include "utils/ucc_sys.h"
 #include <sys/shm.h>
 
@@ -227,18 +228,17 @@ ucc_status_t ucc_tl_cuda_team_create_test(ucc_base_team_t *tl_team)
     team->sync_state = (ucc_tl_cuda_sync_state_t*)PTR_OFFSET(team->bar,
                             sizeof(ucc_tl_cuda_shm_barrier_t) *
                             lib->cfg.max_concurrent);
-    CUDACHECK_GOTO(cudaStreamCreateWithFlags(&team->stream,
-                                             cudaStreamNonBlocking),
-                   exit_err, status, tl_team->context->lib);
+    CUDA_CHECK_GOTO(cudaStreamCreateWithFlags(&team->stream,
+                    cudaStreamNonBlocking), exit_err, status);
     for (i = 0; i < lib->cfg.max_concurrent; i++) {
         sync = UCC_TL_CUDA_TEAM_SYNC(team, UCC_TL_TEAM_RANK(team), i);
-        CUDACHECK_GOTO(cudaEventCreateWithFlags(&sync->ipc_event_local,
+        CUDA_CHECK_GOTO(cudaEventCreateWithFlags(&sync->ipc_event_local,
                                                 cudaEventDisableTiming |
                                                 cudaEventInterprocess),
-                       exit_err, status, tl_team->context->lib);
-        CUDACHECK_GOTO(cudaIpcGetEventHandle(&sync->ev_handle,
+                        exit_err, status);
+        CUDA_CHECK_GOTO(cudaIpcGetEventHandle(&sync->ev_handle,
                                              sync->ipc_event_local),
-                       exit_err, status, tl_team->context->lib);
+                        exit_err, status);
         sync->seq_num[0] = i;
     }
 
@@ -266,9 +266,9 @@ barrier:
                 continue;
             }
             peer_sync = UCC_TL_CUDA_TEAM_SYNC(team, j, i);
-            CUDACHECK_GOTO(cudaIpcOpenEventHandle(&sync->data[j].ipc_event_remote,
-                                                peer_sync->ev_handle),
-                        exit_err, status, tl_team->context->lib);
+            CUDA_CHECK_GOTO(cudaIpcOpenEventHandle(&sync->data[j].ipc_event_remote,
+                                                   peer_sync->ev_handle),
+                            exit_err, status);
         }
     }
     team->oob_req = NULL;
@@ -283,7 +283,7 @@ ucc_status_t ucc_tl_cuda_team_get_scores(ucc_base_team_t *tl_team,
                                          ucc_coll_score_t **score_p)
 {
     ucc_tl_cuda_team_t *team = ucc_derived_of(tl_team, ucc_tl_cuda_team_t);
-    ucc_tl_cuda_lib_t  *lib  = UCC_TL_CUDA_TEAM_LIB(team);
+    ucc_base_context_t *ctx  = UCC_TL_TEAM_CTX(team);
     ucc_memory_type_t   mt   = UCC_MEMORY_TYPE_CUDA;
     ucc_coll_score_t   *score;
     ucc_status_t        status;
@@ -297,9 +297,9 @@ ucc_status_t ucc_tl_cuda_team_get_scores(ucc_base_team_t *tl_team,
         return status;
     }
 
-    if (strlen(lib->super.super.score_str) > 0) {
+    if (strlen(ctx->score_str) > 0) {
         status = ucc_coll_score_update_from_str(
-            lib->super.super.score_str, score, UCC_TL_TEAM_SIZE(team),
+            ctx->score_str, score, UCC_TL_TEAM_SIZE(team),
             ucc_tl_cuda_coll_init, &team->super.super,
             UCC_TL_CUDA_DEFAULT_SCORE, NULL);
         if ((status < 0) && (status != UCC_ERR_INVALID_PARAM) &&

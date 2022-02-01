@@ -185,6 +185,9 @@ AS_IF([test "x$with_docs_only" = xyes],
      CHECK_ROCM
      AC_MSG_RESULT([ROCM support: $rocm_happy; $ROCM_CPPFLAGS $ROCM_LDFLAGS])
      AC_MSG_RESULT([HIP support: $hip_happy; $HIP_CPPFLAGS $HIP_LDFLAGS])
+     if test $rocm_happy = "yes"; then
+         mc_modules="${mc_modules}:rocm"
+     fi
     ]) # Docs only
 
 
@@ -204,8 +207,11 @@ AC_CONFIG_FILES([
                  src/components/mc/cpu/Makefile
                  src/components/mc/cuda/Makefile
                  src/components/mc/cuda/kernel/Makefile
-                 src/components/mc/rocm/Makefile
-                 test/mpi/Makefile
+                 src/components/ec/cuda/Makefile
+                 src/components/ec/cuda/kernel/Makefile
+		 src/components/mc/rocm/Makefile	
+		 src/components/ec/rocm/Makefile	
+		 test/mpi/Makefile
                  tools/info/Makefile
                  tools/perf/Makefile
                  cmake/Makefile

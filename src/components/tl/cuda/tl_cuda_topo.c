@@ -5,7 +5,7 @@
  */
 
 #include "tl_cuda_topo.h"
-#include "tl_cuda_common.h"
+#include "utils/arch/cuda_def.h"
 #include <inttypes.h>
 #include <pthread.h>
 #include <nvml.h>
@@ -14,6 +14,16 @@ pthread_mutex_t nvml_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define MAX_PCI_BUS_ID_STR 16
 #define MAX_PCI_DEVICES    32
+
+#define NVMLCHECK_GOTO(_cmd, _label, _status, _lib)                            \
+    do {                                                                       \
+        nvmlReturn_t e = _cmd;                                                 \
+        if (ucc_unlikely(NVML_SUCCESS != e)) {                                 \
+            tl_error(_lib, "NVML error %d %s", e, nvmlErrorString(e));         \
+            _status = UCC_ERR_NO_MESSAGE;                                      \
+            goto _label;                                                       \
+        }                                                                      \
+    } while (0)
 
 static ucc_status_t
 ucc_tl_cuda_topo_pci_id_from_str(const char * bus_id_str,
@@ -44,8 +54,8 @@ ucc_status_t ucc_tl_cuda_topo_get_pci_id(const ucc_base_lib_t *lib,
     char pci_bus_id[MAX_PCI_BUS_ID_STR];
     ucc_status_t st;
 
-    CUDACHECK_GOTO(cudaDeviceGetPCIBusId(pci_bus_id, MAX_PCI_BUS_ID_STR,
-                                         device), exit, st, lib);
+    CUDA_CHECK_GOTO(cudaDeviceGetPCIBusId(pci_bus_id, MAX_PCI_BUS_ID_STR,
+                                          device), exit, st);
     st = ucc_tl_cuda_topo_pci_id_from_str(pci_bus_id, pci_id);
 exit:
     return st;
@@ -80,6 +90,7 @@ ucc_tl_cuda_topo_graph_find_by_id(const ucc_tl_cuda_topo_t *topo,
 
 static ucc_status_t
 ucc_tl_cuda_topo_graph_add_device(const ucc_tl_cuda_device_pci_id_t *dev_id,
+                                  ucc_tl_cuda_topo_dev_type_t dev_type,
                                   ucc_tl_cuda_topo_t *topo,
                                   ucc_tl_cuda_topo_node_t **node)
 {
@@ -99,12 +110,14 @@ ucc_tl_cuda_topo_graph_add_device(const ucc_tl_cuda_device_pci_id_t *dev_id,
     } else if (ret == 0) {
         /* device already exists */
         *node = &topo->graph[kh_value(&topo->bus_to_node_hash, iter)];
+        ucc_assert((*node)->type == dev_type);
         return UCC_OK;
     } else {
         n = topo->num_nodes;
         topo->num_nodes++;
         kh_value(&topo->bus_to_node_hash, iter) = n;
         topo->graph[n].pci_id = *dev_id;
+        topo->graph[n].type   = dev_type;
         ucc_list_head_init(&topo->graph[n].link.list_link);
         *node = &topo->graph[n];
     }
@@ -161,6 +174,7 @@ static ucc_status_t ucc_tl_cuda_topo_graph_create(ucc_tl_cuda_topo_t *topo)
     nvmlFieldValue_t nvml_value;
     nvmlPciInfo_t nvml_pci;
     nvmlIntNvLinkDeviceType_t nvml_dev_type;
+    ucc_tl_cuda_topo_dev_type_t dev_type;
     ucc_tl_cuda_device_pci_id_t pci_id;
     ucc_tl_cuda_topo_node_t *node, *peer_node;
     int num_gpus;
@@ -184,13 +198,15 @@ static ucc_status_t ucc_tl_cuda_topo_graph_create(ucc_tl_cuda_topo_t *topo)
     NVMLCHECK_GOTO(nvmlInit_v2(), exit_free_graph, status, topo->lib);
     nvml_value.fieldId = NVML_FI_DEV_NVLINK_LINK_COUNT;
     for (i = 0; i < num_gpus; i++) {
-        CUDACHECK_GOTO(cudaDeviceGetPCIBusId(pci_bus_str, MAX_PCI_BUS_ID_STR, i),
-                       exit_nvml_shutdown, status, topo->lib);
+        CUDA_CHECK_GOTO(cudaDeviceGetPCIBusId(pci_bus_str, MAX_PCI_BUS_ID_STR, i),
+                        exit_nvml_shutdown, status);
         status = ucc_tl_cuda_topo_pci_id_from_str(pci_bus_str, &pci_id);
         if (status != UCC_OK) {
             goto exit_nvml_shutdown;
         }
-        status = ucc_tl_cuda_topo_graph_add_device(&pci_id, topo, &node);
+        status = ucc_tl_cuda_topo_graph_add_device(&pci_id,
+                                                   UCC_TL_CUDA_TOPO_DEV_TYPE_GPU,
+                                                   topo, &node);
         if (status != UCC_OK) {
             goto exit_nvml_shutdown;
         }
@@ -205,9 +221,14 @@ static ucc_status_t ucc_tl_cuda_topo_graph_create(ucc_tl_cuda_topo_t *topo)
             NVMLCHECK_GOTO(nvmlDeviceGetNvLinkRemoteDeviceType(nvml_dev, link,
                                                                &nvml_dev_type),
                            exit_nvml_shutdown, status, topo->lib);
-            if ((nvml_dev_type != NVML_NVLINK_DEVICE_TYPE_GPU) &&
-                (nvml_dev_type != NVML_NVLINK_DEVICE_TYPE_SWITCH))
-            {
+            switch (nvml_dev_type) {
+            case NVML_NVLINK_DEVICE_TYPE_GPU:
+                dev_type = UCC_TL_CUDA_TOPO_DEV_TYPE_GPU;
+                break;
+            case NVML_NVLINK_DEVICE_TYPE_SWITCH:
+                dev_type = UCC_TL_CUDA_TOPO_DEV_TYPE_SWITCH;
+                break;
+            default:
                 /* nvlink connected device is not supported by cuda tl */
                 continue;
             }
@@ -218,7 +239,7 @@ static ucc_status_t ucc_tl_cuda_topo_graph_create(ucc_tl_cuda_topo_t *topo)
             pci_id.bus      = nvml_pci.bus;
             pci_id.device   = nvml_pci.device;
             pci_id.function = 0;
-            status = ucc_tl_cuda_topo_graph_add_device(&pci_id, topo,
+            status = ucc_tl_cuda_topo_graph_add_device(&pci_id, dev_type, topo,
                                                        &peer_node);
             if (status != UCC_OK) {
                 goto exit_nvml_shutdown;
@@ -274,19 +295,38 @@ ucc_status_t ucc_tl_cuda_topo_num_links(const ucc_tl_cuda_topo_t *topo,
                                         int *num_links)
 {
     ucc_status_t status;
-    ucc_tl_cuda_topo_node_t *dev1_node;
-    ucc_tl_cuda_topo_link_t *link;
+    ucc_tl_cuda_topo_node_t *dev1_node, *dev2_node;
+    ucc_tl_cuda_topo_node_t *link_node;
+    ucc_tl_cuda_topo_link_t *dev1_link, *dev2_link;
 
     *num_links = 0;
     status = ucc_tl_cuda_topo_graph_find_by_id(topo, dev1, &dev1_node);
     if (status != UCC_OK) {
         return status;
     }
+    status = ucc_tl_cuda_topo_graph_find_by_id(topo, dev2, &dev2_node);
+    if (status != UCC_OK) {
+        return status;
+    }
 
-    ucc_list_for_each(link, &dev1_node->link.list_link, list_link) {
-        if (ucc_tl_cuda_topo_device_id_equal(&link->pci_id, dev2)) {
-            *num_links += link->width;
-            return UCC_OK;
+    ucc_list_for_each(dev1_link, &dev1_node->link.list_link, list_link) {
+        if (ucc_tl_cuda_topo_device_id_equal(&dev1_link->pci_id, dev2)) {
+            *num_links += dev1_link->width;
+        } else {
+            /* check if peer device is switch and it connects given devices */
+            status = ucc_tl_cuda_topo_graph_find_by_id(topo, &dev1_link->pci_id,
+                                                       &link_node);
+            if (status != UCC_OK) {
+                return status;
+            }
+            if (link_node->type == UCC_TL_CUDA_TOPO_DEV_TYPE_SWITCH) {
+                ucc_list_for_each(dev2_link, &dev2_node->link.list_link, list_link) {
+                    if (ucc_tl_cuda_topo_device_id_equal(&dev2_link->pci_id,
+                                                         &dev1_link->pci_id)) {
+                        *num_links += ucc_min(dev1_link->width, dev2_link->width);
+                    }
+                }
+            }
         }
     }
 
