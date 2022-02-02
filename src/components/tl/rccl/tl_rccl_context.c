@@ -17,7 +17,7 @@ ucc_status_t ucc_tl_rccl_event_collective_progress(ucc_coll_task_t *coll_task)
     ucc_status_t status;
 
     ucc_assert(task->completed != NULL);
-    status = ucc_ec_event_test(task->completed, UCC_EE_CUDA_STREAM);
+    status = ucc_ec_event_test(task->completed, UCC_EE_ROCM_STREAM);
     coll_task->super.status = status;
 #ifdef HAVE_PROFILING_TL_RCCL
     if (coll_task->super.status == UCC_OK) {

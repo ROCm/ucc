@@ -89,7 +89,7 @@ ucc_tl_rccl_task_t * ucc_tl_rccl_init_task(ucc_base_coll_args_t *coll_args,
     task->super.triggered_post     = ucc_tl_rccl_triggered_post;
     task->completed                = NULL;
     if (rccl_ctx->cfg.sync_type == UCC_TL_RCCL_COMPLETION_SYNC_TYPE_EVENT) {
-        status = ucc_ec_create_event(&task->completed, UCC_EE_CUDA_STREAM);
+        status = ucc_ec_create_event(&task->completed, UCC_EE_ROCM_STREAM);
         if (ucc_unlikely(status != UCC_OK)) {
             ucc_mpool_put(task);
             return NULL;
@@ -111,7 +111,7 @@ ucc_status_t ucc_tl_rccl_triggered_post(ucc_ee_h ee, ucc_ev_t *ev,
     ucc_status_t status;
     ucc_ev_t *post_event;
 
-    ucc_assert(ee->ee_type == UCC_EE_CUDA_STREAM);
+    ucc_assert(ee->ee_type == UCC_EE_ROCM_STREAM);
     coll_task->ee = ee;
     tl_info(UCC_TASK_LIB(task), "triggered post. task:%p", coll_task);
 
@@ -140,7 +140,7 @@ ucc_status_t ucc_tl_rccl_coll_finalize(ucc_coll_task_t *coll_task)
 
     tl_info(UCC_TASK_LIB(task), "finalizing coll task %p", task);
     if (task->completed) {
-        ucc_ec_destroy_event(task->completed, UCC_EE_CUDA_STREAM);
+        ucc_ec_destroy_event(task->completed, UCC_EE_ROCM_STREAM);
     }
     ucc_tl_rccl_free_task(task);
     return status;
@@ -160,7 +160,7 @@ ucc_status_t ucc_tl_rccl_collective_sync(ucc_tl_rccl_task_t *task,
     }
 
     status = ucc_ec_event_post(stream, task->completed,
-                               UCC_EE_CUDA_STREAM);
+                               UCC_EE_ROCM_STREAM);
     if (ucc_unlikely(status != UCC_OK)) {
       return status;
     }
