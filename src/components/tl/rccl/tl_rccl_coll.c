@@ -149,14 +149,18 @@ ucc_status_t ucc_tl_rccl_coll_finalize(ucc_coll_task_t *coll_task)
 ucc_status_t ucc_tl_rccl_collective_sync(ucc_tl_rccl_task_t *task,
                                          hipStream_t stream)
 {
-  //   ucc_tl_rccl_context_t *ctx    = TASK_CTX(task);
+    ucc_tl_rccl_context_t *ctx    = TASK_CTX(task);
     ucc_status_t           status = UCC_OK;
 
     task->host_status = task->super.super.status;
-    ucc_assert(ctx->cfg.sync_type == UCC_TL_RCCL_COMPLETION_SYNC_TYPE_EVENT);
+    if (ctx->cfg.sync_type != UCC_TL_RCCL_COMPLETION_SYNC_TYPE_EVENT)
+    {
+      tl_error(UCC_TASK_LIB(task), "RCCL only supports stream synchronization events");
+      return UCC_ERR_NOT_SUPPORTED;
+    }
 
     status = ucc_ec_event_post(stream, task->completed,
-			       UCC_EE_CUDA_STREAM);
+                               UCC_EE_CUDA_STREAM);
     if (ucc_unlikely(status != UCC_OK)) {
       return status;
     }
