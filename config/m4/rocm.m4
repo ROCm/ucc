@@ -39,7 +39,7 @@ AC_DEFUN([ROCM_BUILD_FLAGS],
 # Parse value of ARG into appropriate LIBS, LDFLAGS, and
 # CPPFLAGS variables.
 AC_DEFUN([HIP_BUILD_FLAGS],
-    $4="-D__HIP_PLATFORM_AMD__ -I$1/include/hip -I$1/include"
+    $4="-D__HIP_PLATFORM_AMD__ -I$1/include/hip -I$1/include  -I$1/hip/include"
     $3="-L$1/hip/lib -L$1/lib"
     $2="-lamdhip64"
 )
@@ -111,7 +111,7 @@ AS_IF([test "x$with_rocm" != "xno"],
     hip_happy=no
     AC_CHECK_LIB([hip_hcc], [hipFree], [AC_MSG_WARN([Please install ROCm-3.7.0 or above])], [hip_happy=yes])
     AS_IF([test "x$hip_happy" = xyes],
-          [AC_CHECK_HEADERS([hip_runtime.h], [hip_happy=yes], [hip_happy=no])])
+          [AC_CHECK_HEADERS([hip/hip_runtime.h], [hip_happy=yes], [hip_happy=no])])
     AS_IF([test "x$hip_happy" = xyes],
           [AC_CHECK_LIB([amdhip64], [hipFree], [hip_happy=yes], [hip_happy=no])])
     AS_IF([test "x$hip_happy" = xyes], [HIP_CXXFLAGS="--std=gnu++11"], [])
