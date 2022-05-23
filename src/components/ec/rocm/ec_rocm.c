@@ -328,7 +328,7 @@ ucc_status_t ucc_ec_rocm_task_post(void *ee_stream, void **ee_req)
     ucc_ec_rocm_config_t         *cfg = EC_ROCM_CONFIG;
     ucc_ec_rocm_stream_request_t *req;
     ucc_ec_rocm_event_t          *rocm_event;
-    ucc_status_t                  status;
+    ucc_status_t                  status = UCC_OK;
 
     UCC_EC_ROCM_INIT_STREAM();
     req = ucc_mpool_get(&ucc_ec_rocm.strm_reqs);
