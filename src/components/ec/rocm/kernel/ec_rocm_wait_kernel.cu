@@ -5,7 +5,7 @@
  * See file LICENSE for terms.
  */
 
-#include "../ec_rocm.h"
+#include "ec_rocm.h"
 
 __global__ void wait_kernel(volatile uint32_t *status) {
     ucc_status_t st;

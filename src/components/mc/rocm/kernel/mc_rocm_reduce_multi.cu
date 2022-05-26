@@ -5,7 +5,7 @@
  * See file LICENSE for terms.
  */
 
-#include "../mc_rocm.h"
+#include "mc_rocm.h"
 #include "utils/ucc_math.h"
 
 #include "mc_rocm_reduce_ops.h"
