@@ -10,7 +10,8 @@ HIPCCFLAGS =                                     \
     -I${UCC_TOP_BUILDDIR}                        \
     -I${UCC_TOP_SRCDIR}                          \
     -I${UCC_TOP_SRCDIR}/src                      \
-    -I${UCC_TOP_BUILDDIR}/src 
+    -I${UCC_TOP_BUILDDIR}/src                    \
+    -I${UCC_TOP_SRCDIR}/src/components/mc/rocm
 
 LINK = $(LIBTOOL) --mode=link $(CC) -o $@
 
